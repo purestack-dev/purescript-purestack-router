@@ -1,0 +1,11 @@
+export function json(req) {
+  return req.json
+}
+
+export function method(req) {
+  return req.method
+}
+
+export function url(req) {
+  return req.url
+}
