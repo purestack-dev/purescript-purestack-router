@@ -1411,31 +1411,49 @@
   var runAPI = function(dict) {
     return dict.runAPI;
   };
+  var routeFromRequest = function(req) {
+    return {
+      verb: method(req),
+      path: function() {
+        var v = fromString2(url(req));
+        if (v instanceof Nothing) {
+          return [];
+        }
+        ;
+        if (v instanceof Just) {
+          var v1 = path(v.value0);
+          if (v1 instanceof PathEmpty) {
+            return [];
+          }
+          ;
+          if (v1 instanceof PathAbsolute) {
+            return v1.value0;
+          }
+          ;
+          if (v1 instanceof PathRelative) {
+            return v1.value0;
+          }
+          ;
+          throw new Error("Failed pattern match at PureStack.Router (line 68, column 19 - line 71, column 32): " + [v1.constructor.name]);
+        }
+        ;
+        throw new Error("Failed pattern match at PureStack.Router (line 66, column 11 - line 71, column 32): " + [v.constructor.name]);
+      }()
+    };
+  };
   var run3 = function() {
     return function(dictRunAPI) {
-      return runAPI(dictRunAPI);
+      var runAPI1 = runAPI(dictRunAPI);
+      return function(handlers) {
+        return function(req) {
+          return runAPI1(handlers)(routeFromRequest(req))(req);
+        };
+      };
     };
   };
   var parseRoute = function(dict) {
     return dict.parseRoute;
   };
-  var notFound = /* @__PURE__ */ string("")({
-    status: 404,
-    statusText: "Not Found",
-    headers: []
-  });
-  var runAPINilRow = {
-    runAPI: function(v) {
-      return function(v1) {
-        return pure2(notFound);
-      };
-    }
-  };
-  var internalServerError = /* @__PURE__ */ string("")({
-    status: 500,
-    statusText: "Internal Server Error",
-    headers: []
-  });
   var runAPICons = function(dictParseRoute) {
     var parseRoute1 = parseRoute(dictParseRoute);
     return function() {
@@ -1448,46 +1466,22 @@
             return function() {
               return {
                 runAPI: function(handlers) {
-                  return function(req) {
-                    var v = fromString2(url(req));
-                    if (v instanceof Nothing) {
-                      return pure2(internalServerError);
-                    }
-                    ;
-                    if (v instanceof Just) {
-                      var verb1 = method(req);
-                      var path2 = function() {
-                        var v12 = path(v.value0);
-                        if (v12 instanceof PathEmpty) {
-                          return [];
-                        }
-                        ;
-                        if (v12 instanceof PathAbsolute) {
-                          return v12.value0;
-                        }
-                        ;
-                        if (v12 instanceof PathRelative) {
-                          return v12.value0;
-                        }
-                        ;
-                        throw new Error("Failed pattern match at PureStack.Router (line 161, column 18 - line 164, column 36): " + [v12.constructor.name]);
-                      }();
+                  return function(v) {
+                    return function(req) {
                       var v1 = parseRoute1({
-                        path: path2,
-                        verb: verb1
+                        path: v.path,
+                        verb: v.verb
                       });
                       if (v1 instanceof Nothing) {
-                        return runAPI1($$delete4($$Proxy.value)(handlers))(req);
+                        return runAPI1($$delete4($$Proxy.value)(handlers))(v)(req);
                       }
                       ;
                       if (v1 instanceof Just) {
                         return v1.value0(get2($$Proxy.value)(handlers))(req);
                       }
                       ;
-                      throw new Error("Failed pattern match at PureStack.Router (line 166, column 9 - line 168, column 63): " + [v1.constructor.name]);
-                    }
-                    ;
-                    throw new Error("Failed pattern match at PureStack.Router (line 157, column 5 - line 168, column 63): " + [v.constructor.name]);
+                      throw new Error("Failed pattern match at PureStack.Router (line 150, column 5 - line 152, column 59): " + [v1.constructor.name]);
+                    };
                   };
                 }
               };
@@ -1496,6 +1490,20 @@
         };
       };
     };
+  };
+  var notFound = /* @__PURE__ */ string("")({
+    status: 404,
+    statusText: "Not Found",
+    headers: []
+  });
+  var runAPINilRow = {
+    runAPI: function(v) {
+      return function(v1) {
+        return function(v2) {
+          return pure2(notFound);
+        };
+      };
+    }
   };
   var assert = function(dictApplicative) {
     var pure22 = pure(dictApplicative);
@@ -1510,7 +1518,7 @@
           return empty4;
         }
         ;
-        throw new Error("Failed pattern match at PureStack.Router (line 137, column 1 - line 137, column 65): " + [v.constructor.name]);
+        throw new Error("Failed pattern match at PureStack.Router (line 130, column 1 - line 130, column 65): " + [v.constructor.name]);
       };
     };
   };

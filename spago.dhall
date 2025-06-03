@@ -9,6 +9,7 @@
   , "maybe"
   , "prelude"
   , "record"
+  , "run"
   , "tuples"
   , "typelevel-prelude"
   , "unsafe-coerce"
