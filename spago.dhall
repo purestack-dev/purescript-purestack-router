@@ -1,11 +1,13 @@
 { name = "my-project"
 , dependencies =
-  [ "aff-promise"
+  [ "aff"
+  , "aff-promise"
   , "argonaut"
   , "arrays"
   , "console"
   , "control"
   , "effect"
+  , "either"
   , "maybe"
   , "prelude"
   , "record"
@@ -14,6 +16,7 @@
   , "typelevel-prelude"
   , "unsafe-coerce"
   , "url-immutable"
+  , "variant"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs", "test/**/*.purs" ]

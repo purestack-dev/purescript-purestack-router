@@ -1,5 +1,5 @@
-export function json(req) {
-  return req.json
+export function jsonPromise(req) {
+  return req.json()
 }
 
 export function method(req) {
