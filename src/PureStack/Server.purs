@@ -1,9 +1,23 @@
 module PureStack.Server
   ( Server
-  , serve
+  , class ToResponse
+  , toResponse
+  , class FromRequest
+  , fromRequest
+  , run
+  , notFound
+  , internalServerError
+  , badRequest
+  -------------------------------------------------------------------------------------------------
   , class ServeAPI
   , serveAPI
   , Nt(..)
+  , class ServeRoute
+  , serveRoute
+  , class ServeQuery
+  , serveQuery
+  , class ParsePathPiece
+  , parsePathPiece
   ) where
 
 import Prelude
@@ -14,35 +28,46 @@ import Bun.Request as Request
 import Bun.Response (Response)
 import Bun.Response as Response
 import Control.Alternative (class Plus, empty)
-import Control.Monad.Except (ExceptT, runExceptT, throwError)
+import Control.Monad.Except (ExceptT, runExceptT)
 import Data.Argonaut (class DecodeJson, class EncodeJson, decodeJson, encodeJson)
 import Data.Array as Array
 import Data.Either (Either(..))
+import Data.Int as Int
+import Data.Map (Map)
+import Data.Map as Map
 import Data.Maybe (Maybe(..))
+import Data.Number as Number
 import Data.Symbol (class IsSymbol, reflectSymbol)
+import Data.Traversable (traverse)
 import Data.URL as URL
-import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Aff.Class (liftAff)
-import Prim.Row (class Lacks)
 import Prim.Row as Row
 import Prim.RowList (class RowToList, RowList)
 import Prim.RowList as RowList
 import Record as Record
+import Record.Builder (Builder)
+import Record.Builder as Builder
 import Type.Proxy (Proxy(..))
 
-type Route = { path :: Array String, verb :: String }
+type Route = { path :: Array String, verb :: String, query :: Map String (Array String) }
 
 routeFromRequest :: Request -> Route
 routeFromRequest req =
-  { verb: Request.method req
-  , path: case URL.fromString (Request.url req) of
-      Nothing -> []
-      Just url -> case URL.path url of
-        URL.PathEmpty -> []
-        URL.PathAbsolute p -> p
-        URL.PathRelative p -> p
-  }
+  let
+    url = URL.fromString $ Request.url req
+  in
+    { verb: Request.method req
+    , path: case url of
+        Nothing -> []
+        Just u -> case URL.path u of
+          URL.PathEmpty -> []
+          URL.PathAbsolute p -> p
+          URL.PathRelative p -> p
+    , query: case url of
+        Nothing -> Map.empty
+        Just u -> URL.query u
+    }
 
 type Server a = ExceptT Response Aff a
 
@@ -53,16 +78,26 @@ class ServeRoute route handler m | route -> handler, handler -> m where
   serveRoute :: Route -> Maybe (Nt m -> handler -> Request -> Server Response)
 
 instance (ServeRoute rest handler m, IsSymbol path) => ServeRoute (path / rest) handler m where
-  serveRoute { path, verb } = do
+  serveRoute route@{ path } = do
     { head: h, tail } <- Array.uncons path
     assert $ h == (reflectSymbol @path Proxy)
-    serveRoute @rest { path: tail, verb: verb }
+    serveRoute @rest route { path = tail }
+
+else instance
+  ( ServeRoute rest handler m
+  , ServeQuery row list
+  , RowToList row list
+  ) =>
+  ServeRoute (Record row / rest) (Record row -> handler) m where
+  serveRoute route@{ query } = do
+    builder <- serveQuery @row @list query
+    serveRoute @rest route <#> (\f nt handler req -> f nt (handler $ Builder.buildFromScratch builder) req)
 
 else instance (ServeRoute rest handler m, ParsePathPiece t) => ServeRoute (t / rest) (t -> handler) m where
-  serveRoute { path, verb } = do
+  serveRoute route@{ path } = do
     { head: h, tail } <- Array.uncons path
     t <- parsePathPiece @t h
-    serveRoute @rest { path: tail, verb } <#> (\f nt handler req -> f nt (handler t) req)
+    serveRoute @rest route { path = tail } <#> (\f nt handler req -> f nt (handler t) req)
 
 else instance ToResponse resp => ServeRoute (GET resp) (m resp) m where
   serveRoute { path, verb } = do
@@ -91,6 +126,62 @@ else instance (FromRequest req, ToResponse resp) => ServeRoute (POST req resp) (
           resp <- nt $ handler r
           pure $ toResponse resp
 
+class ServeQuery :: Row Type -> RowList Type -> Constraint
+class ServeQuery row list | list -> row where
+  serveQuery :: Map String (Array String) -> Maybe (Builder (Record ()) (Record row))
+
+instance ServeQuery () RowList.Nil where
+  serveQuery _ = Just $ identity
+
+instance
+  ( ParsePathPiece t
+  , ServeQuery tail rest
+  , IsSymbol field
+  , Row.Cons field (Array t) tail row
+  , Row.Lacks field tail
+  ) =>
+  ServeQuery row (RowList.Cons field (Array t) rest) where
+  serveQuery m = do
+    r <- serveQuery @tail @rest m
+    case Map.lookup (reflectSymbol @field Proxy) m of
+      Nothing -> pure $ Builder.insert (Proxy @field) [] <<< r
+      Just a -> do
+        v <- parsePathPiece @t `traverse` a
+        pure $ Builder.insert (Proxy @field) v <<< r
+
+else instance
+  ( ParsePathPiece t
+  , ServeQuery tail rest
+  , IsSymbol field
+  , Row.Cons field (Maybe t) tail row
+  , Row.Lacks field tail
+  ) =>
+  ServeQuery row (RowList.Cons field (Maybe t) rest) where
+  serveQuery m = do
+    r <- serveQuery @tail @rest m
+    case Map.lookup (reflectSymbol @field Proxy) m of
+      Nothing -> pure $ Builder.insert (Proxy @field) Nothing <<< r
+      Just a -> do
+        { head, tail } <- Array.uncons a
+        assert $ tail == []
+        v <- parsePathPiece @t head
+        pure $ Builder.insert (Proxy @field) (Just v) <<< r
+
+else instance
+  ( ParsePathPiece t
+  , ServeQuery tail rest
+  , IsSymbol field
+  , Row.Cons field t tail row
+  , Row.Lacks field tail
+  ) =>
+  ServeQuery row (RowList.Cons field t rest) where
+  serveQuery m = do
+    { head, tail } <- Map.lookup (reflectSymbol @field Proxy) m >>= Array.uncons
+    assert $ tail == []
+    v <- parsePathPiece @t head
+    r <- serveQuery @tail @rest m
+    pure $ Builder.insert (Proxy @field) v <<< r
+
 class ToResponse r where
   toResponse :: r -> Response
 
@@ -114,6 +205,15 @@ instance FromRequest Request where
 class ParsePathPiece t where
   parsePathPiece :: String -> Maybe t
 
+instance ParsePathPiece String where
+  parsePathPiece = Just
+
+instance ParsePathPiece Int where
+  parsePathPiece = Int.fromString
+
+instance ParsePathPiece Number where
+  parsePathPiece = Number.fromString
+
 assert :: forall m. Applicative m => Plus m => Boolean -> m Unit
 assert true = pure unit
 assert false = empty
@@ -134,8 +234,8 @@ instance
   , Row.Lacks field restHandlers
   ) =>
   ServeAPI row (RowList.Cons field t rest) handlers m where
-  serveAPI nt handlers route@{ path, verb } req =
-    case serveRoute @t { path, verb } of
+  serveAPI nt handlers route req =
+    case serveRoute @t route of
       Nothing -> serveAPI @row @rest @restHandlers nt (Record.delete (Proxy @field) handlers) route req
       Just f -> f nt (Record.get (Proxy @field) handlers) req
 
@@ -148,7 +248,9 @@ internalServerError = Response.string "" { status: 500, statusText: "Internal Se
 badRequest :: Response
 badRequest = Response.string "" { status: 400, statusText: "Bad Request", headers: [] }
 
-serve
+-- | The first argument is used to run an arbitrary monad in handlers. To use the 'Server' monad
+-- | instead you can just pass `identity` as the first argument.
+run
   :: forall @row list handlers m
    . RowToList row list
   => ServeAPI row list handlers m
@@ -156,61 +258,8 @@ serve
   -> Record handlers
   -> Request
   -> Aff Response
-serve nt handlers req = do
+run nt handlers req = do
   res <- runExceptT $ serveAPI @row @list @handlers (Nt nt) handlers (routeFromRequest req) req
   pure case res of
     Left resp -> resp
     Right resp -> resp
-
--- class RecordNaturalTransformation
---   :: forall k
---    . (k -> Type)
---   -> (k -> Type)
---   -> Row Type
---   -> RowList Type
---   -> Row Type
---   -> Constraint
--- class
---   RecordNaturalTransformation from to row list row'
---   | list from -> row
---   , list to -> row'
---   , row' from -> row
---   , row to -> row where
---   nt' :: (forall a. from a -> to a) -> Record row -> Record row'
-
--- instance RecordNaturalTransformation from to () RowList.Nil () where
---   nt' _ rec = rec
-
--- instance
---   ( IsSymbol field
---   , Row.Cons field t tail row
---   , Row.Cons field t' tail' row'
---   , FunctionNaturalTransformation from to t t'
---   , RecordNaturalTransformation from to tail rest tail'
---   , Lacks field tail
---   , Lacks field tail'
---   ) =>
---   RecordNaturalTransformation from to row (RowList.Cons field t rest) row' where
---   nt' f rec = Record.insert (Proxy @field) (ntFunction f $ Record.get (Proxy @field) rec)
---     $ nt' @from @to @tail @rest @tail' f (Record.delete (Proxy @field) rec)
-
--- class FunctionNaturalTransformation :: forall k. (k -> Type) -> (k -> Type) -> Type -> Type -> Constraint
--- class FunctionNaturalTransformation from to func func' | to func -> func' where
---   ntFunction :: (forall a. from a -> to a) -> func -> func'
-
--- instance FunctionNaturalTransformation from to (from x) (to x) where
---   ntFunction f g = f g
-
--- else instance
---   FunctionNaturalTransformation from to func func' =>
---   FunctionNaturalTransformation from to (a -> func) (a -> func') where
---   ntFunction f g = \a -> ntFunction f (g a)
-
--- nt
---   :: forall @from row row' list
---    . RowToList row list
---   => RecordNaturalTransformation from Aff row list row'
---   => (forall a. from a -> Aff a)
---   -> Record row
---   -> Record row'
--- nt f rec = nt' @from @Aff @row @list @row' f rec

@@ -8,15 +8,16 @@
   , "control"
   , "effect"
   , "either"
+  , "foldable-traversable"
   , "maybe"
+  , "ordered-collections"
   , "prelude"
   , "record"
   , "run"
+  , "transformers"
   , "tuples"
   , "typelevel-prelude"
-  , "unsafe-coerce"
   , "url-immutable"
-  , "variant"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs", "test/**/*.purs" ]
