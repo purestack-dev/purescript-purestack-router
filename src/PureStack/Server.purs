@@ -37,6 +37,7 @@ import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Number as Number
+import Data.String as String
 import Data.Symbol (class IsSymbol, reflectSymbol)
 import Data.Traversable (traverse)
 import Data.URL as URL
@@ -107,18 +108,139 @@ else instance ToResponse resp => ServeRoute (GET resp) (m resp) m where
       resp <- nt handler
       pure $ toResponse resp
 
+else instance ServeRoute (POST Unit Unit) (m Unit) m where
+  serveRoute { path, verb } = do
+    assert $ verb == "POST"
+    assert $ path == []
+    pure $ \(Nt nt) handler _req -> do
+      nt handler
+      pure $ ok
 else instance (ToResponse resp) => ServeRoute (POST Unit resp) (m resp) m where
   serveRoute { path, verb } = do
-    assert $ path == []
     assert $ verb == "POST"
+    assert $ path == []
     pure $ \(Nt nt) handler _req -> do
       resp <- nt handler
       pure $ toResponse resp
-
+else instance (FromRequest req) => ServeRoute (POST resp Unit) (req -> m Unit) m where
+  serveRoute { path, verb } = do
+    assert $ verb == "POST"
+    assert $ path == []
+    pure $ \(Nt nt) handler req -> do
+      liftAff (fromRequest req) >>= case _ of
+        Nothing -> pure $ badRequest
+        Just r -> do
+          nt $ handler r
+          pure $ ok
 else instance (FromRequest req, ToResponse resp) => ServeRoute (POST req resp) (req -> m resp) m where
   serveRoute { path, verb } = do
-    assert $ path == []
     assert $ verb == "POST"
+    assert $ path == []
+    pure $ \(Nt nt) handler req -> do
+      liftAff (fromRequest req) >>= case _ of
+        Nothing -> pure $ badRequest
+        Just r -> do
+          resp <- nt $ handler r
+          pure $ toResponse resp
+
+else instance ServeRoute (DELETE Unit Unit) (m Unit) m where
+  serveRoute { path, verb } = do
+    assert $ verb == "DELETE"
+    assert $ path == []
+    pure $ \(Nt nt) handler _req -> do
+      nt handler
+      pure $ ok
+else instance (ToResponse resp) => ServeRoute (DELETE Unit resp) (m resp) m where
+  serveRoute { path, verb } = do
+    assert $ verb == "DELETE"
+    assert $ path == []
+    pure $ \(Nt nt) handler _req -> do
+      resp <- nt handler
+      pure $ toResponse resp
+else instance (FromRequest req) => ServeRoute (DELETE resp Unit) (req -> m Unit) m where
+  serveRoute { path, verb } = do
+    assert $ verb == "DELETE"
+    assert $ path == []
+    pure $ \(Nt nt) handler req -> do
+      liftAff (fromRequest req) >>= case _ of
+        Nothing -> pure $ badRequest
+        Just r -> do
+          nt $ handler r
+          pure $ ok
+else instance (FromRequest req, ToResponse resp) => ServeRoute (DELETE req resp) (req -> m resp) m where
+  serveRoute { path, verb } = do
+    assert $ verb == "DELETE"
+    assert $ path == []
+    pure $ \(Nt nt) handler req -> do
+      liftAff (fromRequest req) >>= case _ of
+        Nothing -> pure $ badRequest
+        Just r -> do
+          resp <- nt $ handler r
+          pure $ toResponse resp
+
+else instance ServeRoute (PUT Unit Unit) (m Unit) m where
+  serveRoute { path, verb } = do
+    assert $ verb == "PUT"
+    assert $ path == []
+    pure $ \(Nt nt) handler _req -> do
+      nt handler
+      pure $ ok
+else instance (ToResponse resp) => ServeRoute (PUT Unit resp) (m resp) m where
+  serveRoute { path, verb } = do
+    assert $ verb == "PUT"
+    assert $ path == []
+    pure $ \(Nt nt) handler _req -> do
+      resp <- nt handler
+      pure $ toResponse resp
+else instance (FromRequest req) => ServeRoute (PUT resp Unit) (req -> m Unit) m where
+  serveRoute { path, verb } = do
+    assert $ verb == "PUT"
+    assert $ path == []
+    pure $ \(Nt nt) handler req -> do
+      liftAff (fromRequest req) >>= case _ of
+        Nothing -> pure $ badRequest
+        Just r -> do
+          nt $ handler r
+          pure $ ok
+else instance (FromRequest req, ToResponse resp) => ServeRoute (PUT req resp) (req -> m resp) m where
+  serveRoute { path, verb } = do
+    assert $ verb == "PUT"
+    assert $ path == []
+    pure $ \(Nt nt) handler req -> do
+      liftAff (fromRequest req) >>= case _ of
+        Nothing -> pure $ badRequest
+        Just r -> do
+          resp <- nt $ handler r
+          pure $ toResponse resp
+
+else instance ServeRoute (PATCH Unit Unit) (m Unit) m where
+  serveRoute { path, verb } = do
+    assert $ verb == "PATCH"
+    assert $ path == []
+    pure $ \(Nt nt) handler _req -> do
+      nt handler
+      pure $ ok
+else instance (ToResponse resp) => ServeRoute (PATCH Unit resp) (m resp) m where
+  serveRoute { path, verb } = do
+    assert $ verb == "PATCH"
+    assert $ path == []
+    pure $ \(Nt nt) handler _req -> do
+      resp <- nt handler
+      pure $ toResponse resp
+else instance (FromRequest req) => ServeRoute (PATCH resp Unit) (req -> m Unit) m where
+  serveRoute { path, verb } = do
+    assert $ verb == "PATCH"
+    assert $ path == []
+    pure $ \(Nt nt) handler req -> do
+      liftAff (fromRequest req) >>= case _ of
+        Nothing -> pure $ badRequest
+        Just r -> do
+          nt $ handler r
+          pure $ ok
+else instance (FromRequest req, ToResponse resp) => ServeRoute (PATCH req resp) (req -> m resp) m where
+  serveRoute { path, verb } = do
+    assert $ verb == "PATCH"
+    assert $ path == []
     pure $ \(Nt nt) handler req -> do
       liftAff (fromRequest req) >>= case _ of
         Nothing -> pure $ badRequest
@@ -214,6 +336,14 @@ instance ParsePathPiece Int where
 instance ParsePathPiece Number where
   parsePathPiece = Number.fromString
 
+instance ParsePathPiece Boolean where
+  parsePathPiece s = case String.toLower s of
+    "true" -> Just true
+    "1" -> Just true
+    "false" -> Just false
+    "0" -> Just false
+    _ -> Nothing
+
 assert :: forall m. Applicative m => Plus m => Boolean -> m Unit
 assert true = pure unit
 assert false = empty
@@ -247,6 +377,9 @@ internalServerError = Response.string "" { status: 500, statusText: "Internal Se
 
 badRequest :: Response
 badRequest = Response.string "" { status: 400, statusText: "Bad Request", headers: [] }
+
+ok :: Response
+ok = Response.string "" { status: 200, statusText: "OK", headers: [] }
 
 -- | The first argument is used to run an arbitrary monad in handlers. To use the 'Server' monad
 -- | instead you can just pass `identity` as the first argument.
