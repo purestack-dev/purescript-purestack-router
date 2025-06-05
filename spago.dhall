@@ -16,6 +16,7 @@
   , "prelude"
   , "record"
   , "run"
+  , "strings"
   , "transformers"
   , "tuples"
   , "typelevel-prelude"

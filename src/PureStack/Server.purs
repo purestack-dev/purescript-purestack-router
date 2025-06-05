@@ -248,6 +248,14 @@ else instance (FromRequest req, ToResponse resp) => ServeRoute (PATCH req resp) 
           resp <- nt $ handler r
           pure $ toResponse resp
 
+else instance
+  ( ServeAPI routes list handlers m
+  , RowToList routes list
+  ) =>
+  ServeRoute routes (Record handlers) m where
+  serveRoute route = pure $ \nt handlers req ->
+    serveAPI @routes @list nt handlers route req
+
 class ServeQuery :: Row Type -> RowList Type -> Constraint
 class ServeQuery row list | list -> row where
   serveQuery :: Map String (Array String) -> Maybe (Builder (Record ()) (Record row))
