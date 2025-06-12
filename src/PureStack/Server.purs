@@ -1,5 +1,7 @@
 module PureStack.Server
   ( Server
+  , Response(..)
+  , ResponseBody(..)
   , class ToResponse
   , toResponse
   , class FromRequest
@@ -25,13 +27,12 @@ import PureStack.Route
 
 import Bun.Request (Request)
 import Bun.Request as Request
-import Bun.Response (Response)
-import Bun.Response as Response
+import Bun.Response as Bun.Response
 import Control.Alternative (class Plus, empty)
 import Control.Monad.Except (ExceptT, runExceptT)
-import Data.Argonaut (class DecodeJson, class EncodeJson, decodeJson, encodeJson)
+import Data.Argonaut (class DecodeJson, class EncodeJson, Json, decodeJson, encodeJson)
 import Data.Array as Array
-import Data.Either (Either(..))
+import Data.Either (Either(..), either)
 import Data.Int as Int
 import Data.Map (Map)
 import Data.Map as Map
@@ -43,6 +44,8 @@ import Data.Traversable (traverse)
 import Data.URL as URL
 import Effect.Aff (Aff)
 import Effect.Aff.Class (liftAff)
+import Foreign.Object (Object)
+import Foreign.Object as Object
 import Prim.Row as Row
 import Prim.RowList (class RowToList, RowList)
 import Prim.RowList as RowList
@@ -312,11 +315,18 @@ else instance
     r <- serveQuery @tail @rest m
     pure $ Builder.insert (Proxy @field) v <<< r
 
+data ResponseBody
+  = JsonResponseBody Json
+  | EmptyResponseBody
+  | StringResponseBody String
+
+newtype Response = Response { body :: ResponseBody, status :: Int, statusText :: String, headers :: Object String }
+
 class ToResponse r where
   toResponse :: r -> Response
 
 instance EncodeJson (Record row) => ToResponse (Record row) where
-  toResponse rec = Response.json (encodeJson rec) { status: 200, statusText: "OK", headers: [] }
+  toResponse rec = Response { body: JsonResponseBody $ encodeJson rec, status: 200, statusText: "OK", headers: Object.empty }
 
 instance ToResponse Response where
   toResponse resp = resp
@@ -378,16 +388,16 @@ instance
       Just f -> f nt (Record.get (Proxy @field) handlers) req
 
 notFound :: Response
-notFound = Response.string "" { status: 404, statusText: "Not Found", headers: [] }
+notFound = Response { body: EmptyResponseBody, status: 404, statusText: "Not Found", headers: Object.empty }
 
 internalServerError :: Response
-internalServerError = Response.string "" { status: 500, statusText: "Internal Server Error", headers: [] }
+internalServerError = Response { body: EmptyResponseBody, status: 500, statusText: "Internal Server Error", headers: Object.empty }
 
 badRequest :: Response
-badRequest = Response.string "" { status: 400, statusText: "Bad Request", headers: [] }
+badRequest = Response { body: EmptyResponseBody, status: 400, statusText: "Bad Request", headers: Object.empty }
 
 ok :: Response
-ok = Response.string "" { status: 200, statusText: "OK", headers: [] }
+ok = Response { body: EmptyResponseBody, status: 200, statusText: "OK", headers: Object.empty }
 
 -- | The first argument is used to run an arbitrary monad in handlers. To use the 'Server' monad
 -- | instead you can just pass `identity` as the first argument.
@@ -398,9 +408,12 @@ run
   => (forall x. m x -> Server x)
   -> Record handlers
   -> Request
-  -> Aff Response
+  -> Aff Bun.Response.Response
 run nt handlers req = do
-  res <- runExceptT $ serveAPI @row @list @handlers (Nt nt) handlers (routeFromRequest req) req
-  pure case res of
-    Left resp -> resp
-    Right resp -> resp
+  Response { body, headers, status, statusText } <-
+    map (either identity identity) $ runExceptT $ serveAPI @row @list @handlers (Nt nt) handlers (routeFromRequest req) req
+  let opts = { headers, status, statusText }
+  pure $ case body of
+    EmptyResponseBody -> Bun.Response.string "" opts
+    JsonResponseBody json -> Bun.Response.json json opts
+    StringResponseBody string -> Bun.Response.string string opts

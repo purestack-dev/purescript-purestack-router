@@ -32,3 +32,4 @@ data Slash x y
 -- | Other types are captured path pieces.
 infixr 1 type Slash as /
 
+data Headers headers r = Headers (Record headers) r
