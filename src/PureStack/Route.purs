@@ -10,6 +10,7 @@ module PureStack.Route
   , DELETE
   , PATCH
   , Headers(..)
+  , Middleware
   ) where
 
 data HttpMethod
@@ -50,3 +51,5 @@ data Slash x y
 infixr 1 type Slash as /
 
 data Headers headers r = Headers headers r
+
+data Middleware tag
