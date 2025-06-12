@@ -1,27 +1,44 @@
 module PureStack.Route
   ( type (/)
   , Slash
+  , HttpMethod
+  , class MethodName
+  , methodName
   , GET
   , POST
   , PUT
   , DELETE
   , PATCH
+  , Headers(..)
   ) where
 
-data GET :: Type -> Type
-data GET resp
+data HttpMethod
 
-data POST :: Type -> Type -> Type
-data POST req resp
+-- | The `req` can only ever be `Unit`
+foreign import data GET :: Type -> Type -> HttpMethod
+foreign import data POST :: Type -> Type -> HttpMethod
+foreign import data PUT :: Type -> Type -> HttpMethod
+foreign import data DELETE :: Type -> Type -> HttpMethod
+foreign import data PATCH :: Type -> Type -> HttpMethod
 
-data PUT :: Type -> Type -> Type
-data PUT req resp
+class MethodName :: HttpMethod -> Constraint
+class MethodName method where
+  methodName :: String
 
-data DELETE :: Type -> Type -> Type
-data DELETE req resp
+instance MethodName (GET req resp) where
+  methodName = "GET"
 
-data PATCH :: Type -> Type -> Type
-data PATCH req resp
+instance MethodName (POST req resp) where
+  methodName = "POST"
+
+instance MethodName (PUT req resp) where
+  methodName = "PUT"
+
+instance MethodName (DELETE req resp) where
+  methodName = "DELETE"
+
+instance MethodName (PATCH req resp) where
+  methodName = "PATCH"
 
 data Slash :: forall k1 k2. k1 -> k2 -> Type
 data Slash x y
@@ -32,4 +49,4 @@ data Slash x y
 -- | Other types are captured path pieces.
 infixr 1 type Slash as /
 
-data Headers headers r = Headers (Record headers) r
+data Headers headers r = Headers headers r

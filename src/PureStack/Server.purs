@@ -20,6 +20,10 @@ module PureStack.Server
   , serveQuery
   , class ParsePathPiece
   , parsePathPiece
+  , class FromHeaders
+  , fromHeaders
+  , class FromHeader
+  , fromHeader
   ) where
 
 import Prelude
@@ -49,6 +53,8 @@ import Foreign.Object as Object
 import Prim.Row as Row
 import Prim.RowList (class RowToList, RowList)
 import Prim.RowList as RowList
+import PureStack.Cookie (Cookie)
+import PureStack.Cookie as Cookie
 import Record as Record
 import Record.Builder (Builder)
 import Record.Builder as Builder
@@ -103,31 +109,23 @@ else instance (ServeRoute rest handler m, ParsePathPiece t) => ServeRoute (t / r
     t <- parsePathPiece @t h
     serveRoute @rest route { path = tail } <#> (\f nt handler req -> f nt (handler t) req)
 
-else instance ToResponse resp => ServeRoute (GET resp) (m resp) m where
+else instance MethodName (meth Unit Unit) => ServeRoute (meth Unit Unit) (m Unit) m where
   serveRoute { path, verb } = do
-    assert $ verb == "GET"
-    assert $ path == []
-    pure $ \(Nt nt) handler _req -> do
-      resp <- nt handler
-      pure $ toResponse resp
-
-else instance ServeRoute (POST Unit Unit) (m Unit) m where
-  serveRoute { path, verb } = do
-    assert $ verb == "POST"
+    assert $ verb == methodName @(meth Unit Unit)
     assert $ path == []
     pure $ \(Nt nt) handler _req -> do
       nt handler
       pure $ ok
-else instance (ToResponse resp) => ServeRoute (POST Unit resp) (m resp) m where
+else instance (ToResponse resp, MethodName (meth Unit resp)) => ServeRoute (meth Unit resp) (m resp) m where
   serveRoute { path, verb } = do
-    assert $ verb == "POST"
+    assert $ verb == methodName @(meth Unit resp)
     assert $ path == []
     pure $ \(Nt nt) handler _req -> do
       resp <- nt handler
       pure $ toResponse resp
-else instance (FromRequest req) => ServeRoute (POST resp Unit) (req -> m Unit) m where
+else instance (FromRequest req, MethodName (meth resp Unit)) => ServeRoute (meth resp Unit) (req -> m Unit) m where
   serveRoute { path, verb } = do
-    assert $ verb == "POST"
+    assert $ verb == methodName @(meth resp Unit)
     assert $ path == []
     pure $ \(Nt nt) handler req -> do
       liftAff (fromRequest req) >>= case _ of
@@ -135,114 +133,9 @@ else instance (FromRequest req) => ServeRoute (POST resp Unit) (req -> m Unit) m
         Just r -> do
           nt $ handler r
           pure $ ok
-else instance (FromRequest req, ToResponse resp) => ServeRoute (POST req resp) (req -> m resp) m where
+else instance (FromRequest req, ToResponse resp, MethodName (meth req resp)) => ServeRoute (meth req resp) (req -> m resp) m where
   serveRoute { path, verb } = do
-    assert $ verb == "POST"
-    assert $ path == []
-    pure $ \(Nt nt) handler req -> do
-      liftAff (fromRequest req) >>= case _ of
-        Nothing -> pure $ badRequest
-        Just r -> do
-          resp <- nt $ handler r
-          pure $ toResponse resp
-
-else instance ServeRoute (DELETE Unit Unit) (m Unit) m where
-  serveRoute { path, verb } = do
-    assert $ verb == "DELETE"
-    assert $ path == []
-    pure $ \(Nt nt) handler _req -> do
-      nt handler
-      pure $ ok
-else instance (ToResponse resp) => ServeRoute (DELETE Unit resp) (m resp) m where
-  serveRoute { path, verb } = do
-    assert $ verb == "DELETE"
-    assert $ path == []
-    pure $ \(Nt nt) handler _req -> do
-      resp <- nt handler
-      pure $ toResponse resp
-else instance (FromRequest req) => ServeRoute (DELETE resp Unit) (req -> m Unit) m where
-  serveRoute { path, verb } = do
-    assert $ verb == "DELETE"
-    assert $ path == []
-    pure $ \(Nt nt) handler req -> do
-      liftAff (fromRequest req) >>= case _ of
-        Nothing -> pure $ badRequest
-        Just r -> do
-          nt $ handler r
-          pure $ ok
-else instance (FromRequest req, ToResponse resp) => ServeRoute (DELETE req resp) (req -> m resp) m where
-  serveRoute { path, verb } = do
-    assert $ verb == "DELETE"
-    assert $ path == []
-    pure $ \(Nt nt) handler req -> do
-      liftAff (fromRequest req) >>= case _ of
-        Nothing -> pure $ badRequest
-        Just r -> do
-          resp <- nt $ handler r
-          pure $ toResponse resp
-
-else instance ServeRoute (PUT Unit Unit) (m Unit) m where
-  serveRoute { path, verb } = do
-    assert $ verb == "PUT"
-    assert $ path == []
-    pure $ \(Nt nt) handler _req -> do
-      nt handler
-      pure $ ok
-else instance (ToResponse resp) => ServeRoute (PUT Unit resp) (m resp) m where
-  serveRoute { path, verb } = do
-    assert $ verb == "PUT"
-    assert $ path == []
-    pure $ \(Nt nt) handler _req -> do
-      resp <- nt handler
-      pure $ toResponse resp
-else instance (FromRequest req) => ServeRoute (PUT resp Unit) (req -> m Unit) m where
-  serveRoute { path, verb } = do
-    assert $ verb == "PUT"
-    assert $ path == []
-    pure $ \(Nt nt) handler req -> do
-      liftAff (fromRequest req) >>= case _ of
-        Nothing -> pure $ badRequest
-        Just r -> do
-          nt $ handler r
-          pure $ ok
-else instance (FromRequest req, ToResponse resp) => ServeRoute (PUT req resp) (req -> m resp) m where
-  serveRoute { path, verb } = do
-    assert $ verb == "PUT"
-    assert $ path == []
-    pure $ \(Nt nt) handler req -> do
-      liftAff (fromRequest req) >>= case _ of
-        Nothing -> pure $ badRequest
-        Just r -> do
-          resp <- nt $ handler r
-          pure $ toResponse resp
-
-else instance ServeRoute (PATCH Unit Unit) (m Unit) m where
-  serveRoute { path, verb } = do
-    assert $ verb == "PATCH"
-    assert $ path == []
-    pure $ \(Nt nt) handler _req -> do
-      nt handler
-      pure $ ok
-else instance (ToResponse resp) => ServeRoute (PATCH Unit resp) (m resp) m where
-  serveRoute { path, verb } = do
-    assert $ verb == "PATCH"
-    assert $ path == []
-    pure $ \(Nt nt) handler _req -> do
-      resp <- nt handler
-      pure $ toResponse resp
-else instance (FromRequest req) => ServeRoute (PATCH resp Unit) (req -> m Unit) m where
-  serveRoute { path, verb } = do
-    assert $ verb == "PATCH"
-    assert $ path == []
-    pure $ \(Nt nt) handler req -> do
-      liftAff (fromRequest req) >>= case _ of
-        Nothing -> pure $ badRequest
-        Just r -> do
-          nt $ handler r
-          pure $ ok
-else instance (FromRequest req, ToResponse resp) => ServeRoute (PATCH req resp) (req -> m resp) m where
-  serveRoute { path, verb } = do
-    assert $ verb == "PATCH"
+    assert $ verb == methodName @(meth req resp)
     assert $ path == []
     pure $ \(Nt nt) handler req -> do
       liftAff (fromRequest req) >>= case _ of
@@ -342,6 +235,84 @@ instance DecodeJson (Record row) => FromRequest (Record row) where
 instance FromRequest Request where
   fromRequest req = pure $ Just req
 
+instance FromRequest Unit where
+  fromRequest _ = pure $ Just unit
+
+instance
+  ( FromRequest req
+  , FromHeader header
+  ) =>
+  FromRequest (Headers (Object header) req) where
+  fromRequest req = do
+    r <- fromRequest req
+    pure $ do
+      headers <- traverse fromHeader (Request.headers req)
+      r' <- r
+      pure $ Headers headers r'
+
+instance
+  ( RowToList headers headersList
+  , FromRequest req
+  , FromHeaders headers headersList
+  ) =>
+  FromRequest (Headers (Record headers) req) where
+  fromRequest req = do
+    r <- fromRequest req
+    pure $ do
+      headers <- fromHeaders @headers @headersList (Request.headers req)
+      r' <- r
+      pure $ Headers (Builder.buildFromScratch headers) r'
+
+class FromHeader t where
+  fromHeader :: String -> Maybe t
+
+instance FromHeader Cookie where
+  fromHeader = Cookie.parse >>> case _ of
+    Left _ -> Nothing
+    Right x -> Just x
+
+instance FromHeader String where
+  fromHeader = Just
+
+instance FromHeader Int where
+  fromHeader = Int.fromString
+
+class FromHeaders :: Row Type -> RowList Type -> Constraint
+class FromHeaders row list | list -> row where
+  fromHeaders :: Object String -> Maybe (Builder {} (Record row))
+
+instance FromHeaders () RowList.Nil where
+  fromHeaders _ = Just $ identity
+
+instance
+  ( FromHeader t
+  , IsSymbol field
+  , FromHeaders tail rest
+  , Row.Cons field (Maybe t) tail row
+  , Row.Lacks field tail
+  ) =>
+  FromHeaders row (RowList.Cons field (Maybe t) rest) where
+  fromHeaders headers = do
+    r <- fromHeaders @tail @rest headers
+    case Object.lookup (reflectSymbol @field Proxy) headers of
+      Nothing -> pure $ Builder.insert (Proxy @field) Nothing <<< r
+      Just t -> do
+        v <- fromHeader t
+        pure $ Builder.insert (Proxy @field) (Just v) <<< r
+
+else instance
+  ( FromHeader t
+  , IsSymbol field
+  , FromHeaders tail rest
+  , Row.Cons field t tail row
+  , Row.Lacks field tail
+  ) =>
+  FromHeaders row (RowList.Cons field t rest) where
+  fromHeaders headers = do
+    t <- Object.lookup (reflectSymbol @field Proxy) headers >>= fromHeader
+    r <- fromHeaders @tail @rest headers
+    pure $ Builder.insert (Proxy @field) t <<< r
+
 class ParsePathPiece t where
   parsePathPiece :: String -> Maybe t
 
@@ -406,10 +377,10 @@ run
    . RowToList row list
   => ServeAPI row list handlers m
   => (forall x. m x -> Server x)
-  -> Record handlers
+  -> { handlers :: Record handlers }
   -> Request
   -> Aff Bun.Response.Response
-run nt handlers req = do
+run nt { handlers } req = do
   Response { body, headers, status, statusText } <-
     map (either identity identity) $ runExceptT $ serveAPI @row @list @handlers (Nt nt) handlers (routeFromRequest req) req
   let opts = { headers, status, statusText }

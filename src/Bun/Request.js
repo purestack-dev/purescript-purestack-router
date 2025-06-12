@@ -9,3 +9,7 @@ export function method(req) {
 export function url(req) {
   return req.url
 }
+
+export function headers(req) {
+  return Object.fromEntries(req.headers.entries());
+}
